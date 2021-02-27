@@ -5,6 +5,8 @@ import com.zvm.utils.TypeUtils;
 import com.zvm.runtime.struct.JObject;
 import com.zvm.runtime.struct.Slot;
 
+import java.util.Arrays;
+
 /**
  * 执行方法时有局部变量表和操作数栈。OperandStack表示操作数栈
  */
@@ -130,5 +132,13 @@ public class OperandStack {
 
     public Slot getSlot(){
         return slots[size - 1];
+    }
+
+    @Override
+    public String toString() {
+        return "OperandStack{" +
+                "size=" + size +
+                ", slots=" + Arrays.toString(slots) +
+                '}';
     }
 }

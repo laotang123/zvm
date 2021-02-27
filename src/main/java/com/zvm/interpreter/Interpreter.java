@@ -5,6 +5,7 @@ import com.zvm.basestruct.U1;
 import com.zvm.classfile.*;
 import com.zvm.instruction.Instruction;
 import com.zvm.instruction.Opcode;
+import com.zvm.instruction.Opcode1;
 import com.zvm.instruction.synchronization.MonitorEnter;
 import com.zvm.instruction.synchronization.MonitorExit;
 import com.zvm.instruction.arithmetic.arithmetic.*;
@@ -26,17 +27,28 @@ import com.zvm.runtime.*;
 import com.zvm.runtime.struct.JObject;
 import com.zvm.utils.TypeUtils;
 
+import java.io.BufferedWriter;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 
 public class Interpreter {
 
     public RunTimeEnv runTimeEnv;
-    public JThread jThread ;
+    public JThread jThread;
     public Map<Integer, Instruction> instructionMap;
+    private BufferedWriter writer;
 
+    private void initWriter() {
+        try {
+            writer = new BufferedWriter(new FileWriter("instr-log.txt"));
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
 
-    public Interpreter(RunTimeEnv runTimeEnv){
+    public Interpreter(RunTimeEnv runTimeEnv) {
         this.runTimeEnv = runTimeEnv;
         jThread = new JThread();
     }
@@ -44,7 +56,7 @@ public class Interpreter {
     /**
      * 初始化所有指令
      */
-    public void initInstructions(){
+    public void initInstructions() {
         instructionMap = new HashMap<>();
         /** 对象创建和操作指令*/
         instructionMap.put(Opcode.NEW_, new New());
@@ -188,17 +200,17 @@ public class Interpreter {
         instructionMap.put(Opcode.LCMP, new Lcmp());
 
         instructionMap.put(Opcode.IINC, new Iinc());
-            /** 求余 */
+        /** 求余 */
         instructionMap.put(Opcode.IREM, new Irem());
         instructionMap.put(Opcode.LREM, new Lrem());
         instructionMap.put(Opcode.FREM, new Frem());
         instructionMap.put(Opcode.DREM, new Drem());
-            /** 取反 */
+        /** 取反 */
         instructionMap.put(Opcode.INEG, new Ineg());
         instructionMap.put(Opcode.LNEG, new Lneg());
         instructionMap.put(Opcode.FNEG, new Fneg());
         instructionMap.put(Opcode.DNEG, new Dneg());
-            /** 位移 */
+        /** 位移 */
         instructionMap.put(Opcode.ISHL, new Ishl());
         instructionMap.put(Opcode.LSHL, new Lshl());
         instructionMap.put(Opcode.ISHR, new Ishr());
@@ -277,16 +289,20 @@ public class Interpreter {
 
     }
 
-    public void invokeByName(JavaClass javaClass, String name, String descriptor){
+    public void invokeByName(JavaClass javaClass, String name, String descriptor) {
         MethodInfo method_info = javaClass.findMethod(name, descriptor);
-        if (method_info == null){
-            return ;
+        if (method_info == null) {
+            return;
         }
         CallSite callSite = new CallSite();
-        callSite.setCallSite( method_info);
+        callSite.setCallSite(method_info);
 
         jThread.pushFrame(callSite.maxStack, callSite.maxLocals);
+        //记录指令日志
+        initWriter();
         executeByteCode(jThread, javaClass, callSite);
+
+
     }
 
     public void executeByteCode(JThread jThread, JavaClass javaClass, CallSite callSite) {
@@ -296,21 +312,32 @@ public class Interpreter {
         OperandStack operandStack = javaFrame.operandStack;
         LocalVars localVars = javaFrame.localVars;
         CodeUtils code = new CodeUtils(codeRaw, 0);
+
         for (; code.getPc() < codeLength; code.pcAdd(1)) {
             int opcodeInt = TypeUtils.byteArr2Int(codeRaw[code.getPc()].u1);
             Gson gson = new Gson();
-            //System.out.println("pc = " + code.getPc() + " operandStack size "+ operandStack.size);
-            //System.out.println("pc = " + code.getPc() + " operandStack "+gson.toJson(operandStack));
-            //System.out.println("pc = " + code.getPc() + " localVars size "+ localVars.slots.length);
-            //System.out.println("pc = " + code.getPc() + " localVars " + gson.toJson(localVars));
-            //System.out.println();
-            //System.out.println("pc = " + code.getPc() + " opcode:" + Opcode1.getMnemonic(opcodeInt));
 
+//            System.out.println("pc = " + code.getPc() + " operandStack size "+ operandStack.size);
+//            System.out.println("pc = " + code.getPc() + " operandStack "+gson.toJson(operandStack));
+//            System.out.println("pc = " + code.getPc() + " localVars size "+ localVars.slots.length);
+//            System.out.println("pc = " + code.getPc() + " localVars " + gson.toJson(localVars));
+//            System.out.println();
+            System.out.println("pc = " + code.getPc() + " opcode:" + Opcode1.getMnemonic(opcodeInt));
             Instruction instruction = instructionMap.get(opcodeInt);
-            if(instruction != null){
+
+            if (instruction != null) {
                 instruction.execute(runTimeEnv, jThread, javaClass, callSite, this, code);
+                try {
+                    writer.write("\n inst: " + instruction);
+                    writer.write("\n operandStack: " + operandStack + ", localVars: " + localVars);
+                    writer.flush();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
                 continue;
             }
+
+
 
             switch (opcodeInt) {
                 case Opcode.IRETURN: {
@@ -318,6 +345,13 @@ public class Interpreter {
                     JavaFrame invokerFrame = jThread.getTopFrame();
                     int val = operandStack.popInt();
                     invokerFrame.operandStack.putInt(val);
+                    try {
+                        writer.write("\n inst: iReturn" );
+                        writer.write("\n operandStack: " + operandStack + ", localVars: " + localVars);
+                        writer.flush();
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
                     return;
                 }
                 case Opcode.LRETURN: {
@@ -325,6 +359,13 @@ public class Interpreter {
                     JavaFrame invokerFrame = jThread.getTopFrame();
                     long val = operandStack.popLong();
                     invokerFrame.operandStack.putLong(val);
+                    try {
+                        writer.write("\n inst: lReturn" );
+                        writer.write("\n operandStack: " + operandStack + ", localVars: " + localVars);
+                        writer.flush();
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
                     return;
                 }
                 case Opcode.FRETURN: {
@@ -332,6 +373,13 @@ public class Interpreter {
                     JavaFrame invokerFrame = jThread.getTopFrame();
                     float val = operandStack.popFloat();
                     invokerFrame.operandStack.putFloat(val);
+                    try {
+                        writer.write("\n inst: fReturn" );
+                        writer.write("\n operandStack: " + operandStack + ", localVars: " + localVars);
+                        writer.flush();
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
                     return;
                 }
                 case Opcode.DRETURN: {
@@ -339,6 +387,13 @@ public class Interpreter {
                     JavaFrame invokerFrame = jThread.getTopFrame();
                     double val = operandStack.popDouble();
                     invokerFrame.operandStack.putDouble(val);
+                    try {
+                        writer.write("\n inst: dReturn" );
+                        writer.write("\n operandStack: " + operandStack + ", localVars: " + localVars);
+                        writer.flush();
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
                     return;
                 }
                 case Opcode.ARETURN: {
@@ -346,20 +401,40 @@ public class Interpreter {
                     JavaFrame invokerFrame = jThread.getTopFrame();
                     JObject val = operandStack.popJObject();
                     invokerFrame.operandStack.putJObject(val);
+                    try {
+                        writer.write("\n inst: aReturn" );
+                        writer.write("\n operandStack: " + operandStack + ", localVars: " + localVars);
+                        writer.flush();
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
                     return;
                 }
                 case Opcode.RETURN_: {
                     jThread.popFrame();
+                    try {
+                        writer.write("\n inst: return" );
+                        writer.write("\n operandStack: " + operandStack + ", localVars: " + localVars);
+                        writer.flush();
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
                     return;
                 }
             }
         }
+        try {
+            writer.close();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
     }
 
 
     public void invokeSpecial(Ref methodRef) {
         Instruction instruction = instructionMap.get(Opcode.INVOKESPECIAL);
-        ((InvokeSpecial)instruction).invokeSpecial(runTimeEnv, jThread,this, methodRef);
+        ((InvokeSpecial) instruction).invokeSpecial(runTimeEnv, jThread, this, methodRef);
     }
 
 
